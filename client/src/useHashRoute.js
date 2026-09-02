@@ -22,6 +22,9 @@ export function useHashRoute() {
   if (parts[0] === 'portfolio') {
     return { route: 'portfolio' };
   }
+  if (parts[0] === 'backtest') {
+    return { route: 'backtest' };
+  }
   return { route: 'dashboard' };
 }
 

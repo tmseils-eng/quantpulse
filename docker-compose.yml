@@ -1,0 +1,20 @@
+services:
+  quantpulse:
+    build: .
+    ports:
+      - '4000:4000'
+    environment:
+      # Optional: set a real Alpha Vantage key to pull real daily price
+      # history instead of the built-in simulator. Leave unset to run
+      # entirely offline with simulated data.
+      ALPHA_VANTAGE_KEY: ${ALPHA_VANTAGE_KEY:-}
+      # Optional: change the paper-trading starting cash (defaults to 100000).
+      QUANTPULSE_STARTING_CASH: ${QUANTPULSE_STARTING_CASH:-}
+    volumes:
+      # Named volume so the SQLite portfolio survives `docker compose down`
+      # / container recreation — only `down -v` wipes it.
+      - quantpulse-data:/data
+    restart: unless-stopped
+
+volumes:
+  quantpulse-data:

@@ -3,6 +3,13 @@
 // serves the built client), or the local API port in dev.
 const API_BASE = process.env.API_BASE || '';
 
+/** ws(s):// URL for the live-quotes WebSocket endpoint, mirroring API_BASE. */
+export function wsUrl() {
+  if (API_BASE) return API_BASE.replace(/^http/, 'ws') + '/ws';
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${proto}://${window.location.host}/ws`;
+}
+
 async function request(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -33,4 +40,10 @@ export const api = {
   getPortfolioHistory: () => request('/api/portfolio/history'),
   trade: (order) => request('/api/portfolio/trade', { method: 'POST', body: JSON.stringify(order) }),
   resetPortfolio: () => request('/api/portfolio/reset', { method: 'POST' }),
+
+  getOrders: () => request('/api/portfolio/orders'),
+  cancelOrder: (id) => request(`/api/portfolio/orders/${id}/cancel`, { method: 'POST' }),
+
+  runBacktest: (params) =>
+    request('/api/backtest', { method: 'POST', body: JSON.stringify(params) }),
 };

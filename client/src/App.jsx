@@ -5,6 +5,7 @@ import { Navbar } from './components/Navbar.jsx';
 import { Dashboard } from './pages/Dashboard.jsx';
 import { StockDetail } from './pages/StockDetail.jsx';
 import { PortfolioPage } from './pages/PortfolioPage.jsx';
+import { BacktestPage } from './pages/BacktestPage.jsx';
 
 export function App() {
   const nav = useHashRoute();
@@ -31,6 +32,8 @@ export function App() {
       {nav.route === 'portfolio' && (
         <PortfolioPage portfolio={portfolio} onRefreshPortfolio={refreshPortfolio} />
       )}
+
+      {nav.route === 'backtest' && <BacktestPage />}
 
       <div className="footer-note">
         QuantPulse — simulated market data unless ALPHA_VANTAGE_KEY is set. Paper trading only.

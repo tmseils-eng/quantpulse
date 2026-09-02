@@ -98,6 +98,121 @@ export function volatility(bars) {
   return round2(dailyStdev * Math.sqrt(252)); // annualized, %
 }
 
+/**
+ * MACD (Moving Average Convergence Divergence): the difference between a
+ * fast and slow EMA, plus a signal line (EMA of that difference) and the
+ * histogram (macd - signal). Defaults (12, 26, 9) are the standard settings.
+ * Returns `{ macd, signal, histogram }`, each an array aligned with `bars`.
+ */
+export function macd(bars, fastPeriod = 12, slowPeriod = 26, signalPeriod = 9) {
+  const fastEma = emaRaw(bars.map((b) => b.close), fastPeriod);
+  const slowEma = emaRaw(bars.map((b) => b.close), slowPeriod);
+
+  const macdLine = bars.map((_, i) =>
+    fastEma[i] != null && slowEma[i] != null ? fastEma[i] - slowEma[i] : null
+  );
+
+  // The signal line is an EMA of the MACD line itself, seeded once the MACD
+  // line has `signalPeriod` consecutive non-null values (i.e. from slowPeriod
+  // onward).
+  const signalLine = new Array(bars.length).fill(null);
+  const firstValid = macdLine.findIndex((v) => v !== null);
+  if (firstValid !== -1 && bars.length - firstValid >= signalPeriod) {
+    const k = 2 / (signalPeriod + 1);
+    let prev = null;
+    for (let i = firstValid; i < bars.length; i++) {
+      if (i === firstValid + signalPeriod - 1) {
+        const seed =
+          macdLine.slice(firstValid, firstValid + signalPeriod).reduce((a, b) => a + b, 0) /
+          signalPeriod;
+        prev = seed;
+        signalLine[i] = round4(prev);
+      } else if (i >= firstValid + signalPeriod) {
+        prev = macdLine[i] * k + prev * (1 - k);
+        signalLine[i] = round4(prev);
+      }
+    }
+  }
+
+  const histogram = bars.map((_, i) =>
+    macdLine[i] != null && signalLine[i] != null ? round4(macdLine[i] - signalLine[i]) : null
+  );
+
+  return {
+    macd: macdLine.map((v) => (v == null ? null : round4(v))),
+    signal: signalLine,
+    histogram,
+  };
+}
+
+// Like ema(), but returns unrounded values and doesn't require `bars` objects
+// (used internally by macd() so intermediate precision isn't lost to round2).
+function emaRaw(closes, period) {
+  const out = new Array(closes.length).fill(null);
+  if (closes.length === 0) return out;
+  const k = 2 / (period + 1);
+  let prev = null;
+  for (let i = 0; i < closes.length; i++) {
+    if (i === period - 1) {
+      prev = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
+      out[i] = prev;
+    } else if (i >= period) {
+      prev = closes[i] * k + prev * (1 - k);
+      out[i] = prev;
+    }
+  }
+  return out;
+}
+
+/**
+ * Bollinger Bands: an `sma(period)` middle band plus upper/lower bands
+ * `numStdDev` standard deviations away, computed over the same rolling
+ * window. Returns `{ middle, upper, lower }`, each aligned with `bars`.
+ */
+export function bollingerBands(bars, period = 20, numStdDev = 2) {
+  const closes = bars.map((b) => b.close);
+  const middle = new Array(closes.length).fill(null);
+  const upper = new Array(closes.length).fill(null);
+  const lower = new Array(closes.length).fill(null);
+
+  for (let i = period - 1; i < closes.length; i++) {
+    const window = closes.slice(i - period + 1, i + 1);
+    const mean = window.reduce((a, b) => a + b, 0) / period;
+    const variance = window.reduce((sum, c) => sum + (c - mean) ** 2, 0) / period;
+    const stdev = Math.sqrt(variance);
+    middle[i] = round2(mean);
+    upper[i] = round2(mean + numStdDev * stdev);
+    lower[i] = round2(mean - numStdDev * stdev);
+  }
+
+  return { middle, upper, lower };
+}
+
+/**
+ * Volume-Weighted Average Price, cumulative from the start of `bars` (a
+ * "session" VWAP would reset daily — since our bars are already daily
+ * granularity, this is the running VWAP across the whole series). Uses the
+ * typical price ((high + low + close) / 3) per bar, weighted by volume.
+ */
+export function vwap(bars) {
+  const out = new Array(bars.length).fill(null);
+  let cumulativePV = 0;
+  let cumulativeVolume = 0;
+
+  for (let i = 0; i < bars.length; i++) {
+    const typicalPrice = (bars[i].high + bars[i].low + bars[i].close) / 3;
+    const volume = bars[i].volume || 0;
+    cumulativePV += typicalPrice * volume;
+    cumulativeVolume += volume;
+    out[i] = cumulativeVolume > 0 ? round2(cumulativePV / cumulativeVolume) : null;
+  }
+  return out;
+}
+
 function round2(n) {
   return Math.round(n * 100) / 100;
+}
+
+function round4(n) {
+  return Math.round(n * 10000) / 10000;
 }

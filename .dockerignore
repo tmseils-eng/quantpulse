@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+dist
+**/dist
+*.log
+server/quantpulse.db
+server/quantpulse.db-shm
+server/quantpulse.db-wal
+.git
+.github
+.env
+.env.local

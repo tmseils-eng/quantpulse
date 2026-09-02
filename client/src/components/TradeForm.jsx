@@ -3,17 +3,22 @@ import { formatCurrency } from '../format.js';
 
 export function TradeForm({ symbol, price, cash, ownedShares, onTrade }) {
   const [side, setSide] = useState('BUY');
+  const [orderType, setOrderType] = useState('MARKET');
   const [shares, setShares] = useState('');
+  const [limitPrice, setLimitPrice] = useState('');
   const [status, setStatus] = useState(null); // { type: 'error' | 'success', message }
   const [busy, setBusy] = useState(false);
 
   const numShares = Number(shares) || 0;
-  const estTotal = numShares * (price || 0);
-  const maxAffordableShares = price ? Math.floor((cash / price) * 100) / 100 : 0;
+  const numLimitPrice = Number(limitPrice) || 0;
+  const effectivePrice = orderType === 'LIMIT' ? numLimitPrice : price;
+  const estTotal = numShares * (effectivePrice || 0);
+  const maxAffordableShares = effectivePrice ? Math.floor((cash / effectivePrice) * 100) / 100 : 0;
 
   const invalid =
     numShares <= 0 ||
     !price ||
+    (orderType === 'LIMIT' && numLimitPrice <= 0) ||
     (side === 'BUY' && estTotal > cash + 0.01) ||
     (side === 'SELL' && numShares > (ownedShares || 0) + 1e-9);
 
@@ -23,9 +28,22 @@ export function TradeForm({ symbol, price, cash, ownedShares, onTrade }) {
     setBusy(true);
     setStatus(null);
     try {
-      await onTrade({ symbol, side, shares: numShares, price });
-      setStatus({ type: 'success', message: `${side === 'BUY' ? 'Bought' : 'Sold'} ${numShares} share${numShares === 1 ? '' : 's'} of ${symbol}.` });
+      await onTrade({
+        symbol,
+        side,
+        shares: numShares,
+        orderType,
+        ...(orderType === 'LIMIT' ? { limitPrice: numLimitPrice } : {}),
+      });
+      setStatus({
+        type: 'success',
+        message:
+          orderType === 'LIMIT'
+            ? `Limit order placed: ${side.toLowerCase()} ${numShares} share${numShares === 1 ? '' : 's'} of ${symbol} at ${numLimitPrice}.`
+            : `${side === 'BUY' ? 'Bought' : 'Sold'} ${numShares} share${numShares === 1 ? '' : 's'} of ${symbol}.`,
+      });
       setShares('');
+      setLimitPrice('');
     } catch (err) {
       setStatus({ type: 'error', message: err.message });
     } finally {
@@ -52,6 +70,23 @@ export function TradeForm({ symbol, price, cash, ownedShares, onTrade }) {
         </button>
       </div>
 
+      <div className="trade-side-toggle" style={{ marginBottom: 10 }}>
+        <button
+          type="button"
+          className={orderType === 'MARKET' ? 'active-buy' : ''}
+          onClick={() => setOrderType('MARKET')}
+        >
+          Market
+        </button>
+        <button
+          type="button"
+          className={orderType === 'LIMIT' ? 'active-buy' : ''}
+          onClick={() => setOrderType('LIMIT')}
+        >
+          Limit
+        </button>
+      </div>
+
       <div className="field-row">
         <label htmlFor="shares">Shares</label>
         <input
@@ -65,6 +100,28 @@ export function TradeForm({ symbol, price, cash, ownedShares, onTrade }) {
           onChange={(e) => setShares(e.target.value)}
         />
       </div>
+
+      {orderType === 'LIMIT' && (
+        <div className="field-row">
+          <label htmlFor="limitPrice">Limit price</label>
+          <input
+            id="limitPrice"
+            className="text-input"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder={price ? String(price) : '0'}
+            value={limitPrice}
+            onChange={(e) => setLimitPrice(e.target.value)}
+          />
+        </div>
+      )}
+
+      {orderType === 'MARKET' && (
+        <div className="trade-summary" style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+          <span>Large orders may fill away from the quote (slippage)</span>
+        </div>
+      )}
 
       <div className="trade-summary">
         <span>Est. {side === 'BUY' ? 'cost' : 'proceeds'}</span>
@@ -91,7 +148,11 @@ export function TradeForm({ symbol, price, cash, ownedShares, onTrade }) {
         type="submit"
         disabled={invalid || busy}
       >
-        {busy ? 'Placing order…' : `${side === 'BUY' ? 'Buy' : 'Sell'} ${symbol}`}
+        {busy
+          ? 'Placing order…'
+          : orderType === 'LIMIT'
+          ? `Place limit ${side.toLowerCase()} for ${symbol}`
+          : `${side === 'BUY' ? 'Buy' : 'Sell'} ${symbol}`}
       </button>
     </form>
   );

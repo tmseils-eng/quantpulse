@@ -14,6 +14,9 @@ export function Navbar({ route, portfolio }) {
         <a className={`nav-link ${route === 'portfolio' ? 'active' : ''}`} href="#/portfolio">
           Portfolio
         </a>
+        <a className={`nav-link ${route === 'backtest' ? 'active' : ''}`} href="#/backtest">
+          Backtest
+        </a>
       </div>
       <div className="nav-cash">
         {portfolio ? (

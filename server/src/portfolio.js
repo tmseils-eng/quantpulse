@@ -10,7 +10,7 @@ export class TradeError extends Error {}
  * ROLLBACK on error — used anywhere a trade must update multiple tables
  * atomically.
  */
-function runInTransaction(db, fn) {
+export function runInTransaction(db, fn) {
   db.exec('BEGIN');
   try {
     const result = fn();
@@ -176,7 +176,7 @@ export function resetPortfolio(db) {
   return summarize(db);
 }
 
-export const STARTING_CASH = 100_000;
+export const STARTING_CASH = Number(process.env.QUANTPULSE_STARTING_CASH) || 100_000;
 
 function round2(n) {
   return Math.round(n * 100) / 100;

@@ -61,6 +61,11 @@ select {
   color: var(--down);
 }
 
+.live-badge {
+  color: var(--up);
+  font-weight: 600;
+}
+
 .mono {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;

@@ -45,6 +45,19 @@ db.exec(`
     total_value REAL NOT NULL,
     recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    side TEXT NOT NULL CHECK (side IN ('BUY', 'SELL')),
+    order_type TEXT NOT NULL CHECK (order_type IN ('MARKET', 'LIMIT')),
+    shares REAL NOT NULL,
+    limit_price REAL,
+    status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'FILLED', 'CANCELLED')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    filled_at TEXT,
+    filled_price REAL
+  );
 `);
 
 const existing = db.prepare('SELECT * FROM portfolio WHERE id = 1').get();

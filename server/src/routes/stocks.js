@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getHistory, getQuote, getQuotes, searchSymbols, KNOWN_SYMBOLS } from '../marketData.js';
-import { sma, ema, rsi, volatility } from '../indicators.js';
+import { sma, ema, rsi, volatility, macd, bollingerBands, vwap } from '../indicators.js';
 
 export const stocksRouter = Router();
 
@@ -47,6 +47,9 @@ stocksRouter.get('/:symbol/history', async (req, res, next) => {
         sma50: sma(bars, 50),
         ema12: ema(bars, 12),
         rsi14: rsi(bars, 14),
+        macd: macd(bars, 12, 26, 9),
+        bollinger: bollingerBands(bars, 20, 2),
+        vwap: vwap(bars),
       },
       volatility: volatility(bars),
     });

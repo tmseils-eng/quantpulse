@@ -11,13 +11,24 @@ const PAD = { top: 16, right: 12, bottom: 24, left: 12 };
  * hover crosshair with a tooltip. No charting library — just a viewBox,
  * some scale math, and pointer events.
  */
-export function PriceChart({ bars, sma20, sma50, showSma = true }) {
+export function PriceChart({ bars, sma20, sma50, showSma = true, bollinger, showBollinger, vwap, showVwap }) {
   const [hoverIndex, setHoverIndex] = useState(null);
   const svgRef = useRef(null);
 
-  const { linePath, areaPath, sma20Path, sma50Path, volumeBars, scaleX, scaleY } = useMemo(
-    () => buildGeometry(bars, sma20, sma50),
-    [bars, sma20, sma50]
+  const {
+    linePath,
+    areaPath,
+    sma20Path,
+    sma50Path,
+    bollingerUpperPath,
+    bollingerLowerPath,
+    vwapPath,
+    volumeBars,
+    scaleX,
+    scaleY,
+  } = useMemo(
+    () => buildGeometry(bars, sma20, sma50, showBollinger ? bollinger : null, showVwap ? vwap : null),
+    [bars, sma20, sma50, bollinger, showBollinger, vwap, showVwap]
   );
 
   if (!bars || bars.length < 2) {
@@ -58,6 +69,18 @@ export function PriceChart({ bars, sma20, sma50, showSma = true }) {
             </div>
           </>
         )}
+        {showBollinger && bollingerUpperPath && (
+          <div className="legend-item">
+            <span className="legend-swatch" style={{ background: '#5ecbb0' }} />
+            Bollinger (20, 2σ)
+          </div>
+        )}
+        {showVwap && vwapPath && (
+          <div className="legend-item">
+            <span className="legend-swatch" style={{ background: '#f2789f' }} />
+            VWAP
+          </div>
+        )}
       </div>
 
       <svg
@@ -92,6 +115,15 @@ export function PriceChart({ bars, sma20, sma50, showSma = true }) {
         )}
         {showSma && sma50Path && (
           <path d={sma50Path} fill="none" stroke="#9d6bff" strokeWidth="1.25" opacity="0.85" />
+        )}
+        {showBollinger && bollingerUpperPath && (
+          <path d={bollingerUpperPath} fill="none" stroke="#5ecbb0" strokeWidth="1" strokeDasharray="3,2" opacity="0.8" />
+        )}
+        {showBollinger && bollingerLowerPath && (
+          <path d={bollingerLowerPath} fill="none" stroke="#5ecbb0" strokeWidth="1" strokeDasharray="3,2" opacity="0.8" />
+        )}
+        {showVwap && vwapPath && (
+          <path d={vwapPath} fill="none" stroke="#f2789f" strokeWidth="1.25" opacity="0.85" />
         )}
 
         {/* hover crosshair */}
@@ -133,7 +165,7 @@ export function PriceChart({ bars, sma20, sma50, showSma = true }) {
   );
 }
 
-function buildGeometry(bars, sma20, sma50) {
+function buildGeometry(bars, sma20, sma50, bollinger, vwap) {
   const innerWidth = WIDTH - PAD.left - PAD.right;
   const innerHeight = HEIGHT - PAD.top - PAD.bottom;
 
@@ -142,7 +174,13 @@ function buildGeometry(bars, sma20, sma50) {
   }
 
   const closes = bars.map((b) => b.close);
-  const overlayValues = [...(sma20 || []), ...(sma50 || [])].filter((v) => v != null);
+  const overlayValues = [
+    ...(sma20 || []),
+    ...(sma50 || []),
+    ...(bollinger?.upper || []),
+    ...(bollinger?.lower || []),
+    ...(vwap || []),
+  ].filter((v) => v != null);
   const allValues = [...closes, ...overlayValues];
   const yMin = Math.min(...allValues);
   const yMax = Math.max(...allValues);
@@ -186,6 +224,9 @@ function buildGeometry(bars, sma20, sma50) {
     areaPath,
     sma20Path: pathFromSeries(sma20),
     sma50Path: pathFromSeries(sma50),
+    bollingerUpperPath: pathFromSeries(bollinger?.upper),
+    bollingerLowerPath: pathFromSeries(bollinger?.lower),
+    vwapPath: pathFromSeries(vwap),
     volumeBars,
     scaleX,
     scaleY,

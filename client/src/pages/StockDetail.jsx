@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { usePolling } from '../usePolling.js';
 import { PriceChart } from '../components/PriceChart.jsx';
 import { RsiChart } from '../components/RsiChart.jsx';
+import { MacdChart } from '../components/MacdChart.jsx';
 import { TradeForm } from '../components/TradeForm.jsx';
 import { formatCurrency, formatSigned, formatNumber } from '../format.js';
 
@@ -15,6 +16,8 @@ const RANGES = [
 
 export function StockDetail({ symbol, portfolio, onTrade, onRefreshPortfolio }) {
   const [rangeDays, setRangeDays] = useState(180);
+  const [showBollinger, setShowBollinger] = useState(false);
+  const [showVwap, setShowVwap] = useState(false);
 
   const { data: quote, loading: quoteLoading, error: quoteError } = usePolling(
     () => api.getQuote(symbol),
@@ -92,16 +95,26 @@ export function StockDetail({ symbol, portfolio, onTrade, onRefreshPortfolio }) 
               <span className="section-title" style={{ margin: 0 }}>
                 Price
               </span>
-              <div className="segmented">
-                {RANGES.map((r) => (
-                  <button
-                    key={r.days}
-                    className={rangeDays === r.days ? 'active' : ''}
-                    onClick={() => setRangeDays(r.days)}
-                  >
-                    {r.label}
-                  </button>
-                ))}
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <input type="checkbox" checked={showBollinger} onChange={(e) => setShowBollinger(e.target.checked)} />
+                  Bollinger
+                </label>
+                <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <input type="checkbox" checked={showVwap} onChange={(e) => setShowVwap(e.target.checked)} />
+                  VWAP
+                </label>
+                <div className="segmented">
+                  {RANGES.map((r) => (
+                    <button
+                      key={r.days}
+                      className={rangeDays === r.days ? 'active' : ''}
+                      onClick={() => setRangeDays(r.days)}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
             {historyLoading && !historyData && <div className="loading">Loading chart…</div>}
@@ -110,6 +123,10 @@ export function StockDetail({ symbol, portfolio, onTrade, onRefreshPortfolio }) 
                 bars={historyData.bars}
                 sma20={historyData.indicators.sma20}
                 sma50={historyData.indicators.sma50}
+                bollinger={historyData.indicators.bollinger}
+                showBollinger={showBollinger}
+                vwap={historyData.indicators.vwap}
+                showVwap={showVwap}
               />
             )}
           </div>
@@ -117,6 +134,12 @@ export function StockDetail({ symbol, portfolio, onTrade, onRefreshPortfolio }) 
           {historyData && (
             <div className="card">
               <RsiChart rsi={historyData.indicators.rsi14} />
+            </div>
+          )}
+
+          {historyData && (
+            <div className="card">
+              <MacdChart macd={historyData.indicators.macd} />
             </div>
           )}
         </div>

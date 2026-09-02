@@ -1,9 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sma, ema, rsi, dailyReturns, volatility } from '../src/indicators.js';
+import {
+  sma,
+  ema,
+  rsi,
+  dailyReturns,
+  volatility,
+  macd,
+  bollingerBands,
+  vwap,
+} from '../src/indicators.js';
 
-function bar(close) {
-  return { date: '2024-01-01', open: close, high: close, low: close, close, volume: 1000 };
+function bar(close, volume = 1000) {
+  return { date: '2024-01-01', open: close, high: close, low: close, close, volume };
 }
 
 test('sma: nulls before the window fills, then a plain moving average', () => {
@@ -65,4 +74,68 @@ test('volatility: positive and finite for a noisy series', () => {
   const closes = [100, 102, 98, 105, 95, 110, 90, 108, 97, 103];
   const result = volatility(closes.map(bar));
   assert.ok(result > 0 && Number.isFinite(result));
+});
+
+test('macd: flat series converges to a zero line, zero signal, zero histogram', () => {
+  const bars = Array(40).fill(100).map((c) => bar(c));
+  const { macd: macdLine, signal, histogram } = macd(bars, 12, 26, 9);
+  assert.equal(macdLine[35], 0);
+  assert.equal(signal[35], 0);
+  assert.equal(histogram[35], 0);
+});
+
+test('macd: is null until the slow EMA has enough history, then defined', () => {
+  const bars = Array.from({ length: 40 }, (_, i) => bar(100 + i)).map((b) => b);
+  const { macd: macdLine, signal } = macd(bars, 12, 26, 9);
+  assert.equal(macdLine[24], null); // slowPeriod=26 needs index 25 to seed
+  assert.notEqual(macdLine[25], null);
+  // signal needs signalPeriod=9 more values past the first MACD value (idx 25) -> seeds at idx 33
+  assert.equal(signal[32], null);
+  assert.notEqual(signal[33], null);
+});
+
+test('macd: a rising series produces a positive MACD line (fast EMA above slow EMA)', () => {
+  const bars = Array.from({ length: 40 }, (_, i) => bar(100 + i * 2));
+  const { macd: macdLine } = macd(bars, 12, 26, 9);
+  assert.ok(macdLine[39] > 0);
+});
+
+test('bollingerBands: null before the window fills, then middle band matches sma', () => {
+  const closes = [10, 12, 14, 11, 13, 15];
+  const bars = closes.map((c) => bar(c));
+  const { middle, upper, lower } = bollingerBands(bars, 3, 2);
+  const smaResult = sma(bars, 3);
+
+  assert.equal(middle[0], null);
+  assert.equal(middle[1], null);
+  assert.deepEqual(middle.slice(2), smaResult.slice(2));
+  // Upper/lower should straddle the middle band once defined.
+  for (let i = 2; i < closes.length; i++) {
+    assert.ok(upper[i] > middle[i]);
+    assert.ok(lower[i] < middle[i]);
+  }
+});
+
+test('bollingerBands: zero width on a perfectly flat series (stdev = 0)', () => {
+  const bars = Array(10).fill(100).map((c) => bar(c));
+  const { middle, upper, lower } = bollingerBands(bars, 5, 2);
+  assert.equal(upper[4], 100);
+  assert.equal(lower[4], 100);
+  assert.equal(middle[4], 100);
+});
+
+test('vwap: matches a hand-computed cumulative volume-weighted average', () => {
+  // typical price == close here since open/high/low/close are all equal in bar()
+  const bars = [bar(10, 100), bar(20, 300)];
+  const result = vwap(bars);
+  assert.equal(result[0], 10); // only one bar so far: 10
+  // (10*100 + 20*300) / (100+300) = (1000 + 6000) / 400 = 17.5
+  assert.equal(result[1], 17.5);
+});
+
+test('vwap: is non-decreasing in the denominator sense — stays a weighted blend, not a spike', () => {
+  const bars = [bar(100, 1000), bar(200, 1)]; // huge price jump but tiny volume
+  const result = vwap(bars);
+  // With such a small second-bar volume, VWAP should barely move off 100.
+  assert.ok(result[1] > 100 && result[1] < 101);
 });
