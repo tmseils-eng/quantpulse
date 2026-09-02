@@ -1,0 +1,15 @@
+{
+  "name": "quantpulse",
+  "private": true,
+  "description": "QuantPulse — a paper-trading stock dashboard (React + Express + SQLite)",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev --workspace server",
+    "dev:client": "npm run dev --workspace client",
+    "test": "npm test --workspace server",
+    "build": "npm run build --workspace client"
+  }
+}
