@@ -16,19 +16,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22.12'
+          cache: 'npm'
 
-      - name: Install server dependencies
-        working-directory: server
+      # This is an npm-workspaces monorepo (root package.json declares
+      # "workspaces": ["server", "client"]) — installing from the repo root
+      # is what resolves and hoists both workspaces correctly. The root
+      # package.json's own "test" and "build" scripts already delegate via
+      # --workspace, so CI just uses those directly instead of duplicating
+      # the logic per-folder.
+      - name: Install dependencies
         run: npm install
 
       - name: Run server test suite
-        working-directory: server
         run: npm test
 
-      - name: Install client dependencies
-        working-directory: client
-        run: npm install
-
       - name: Build client
-        working-directory: client
         run: npm run build
