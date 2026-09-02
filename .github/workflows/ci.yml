@@ -15,7 +15,12 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22.12'
+          # Pinned to a minor that's confirmed to have node:sqlite available
+          # without a flag. 22.12.0 does NOT (ERR_UNKNOWN_BUILTIN_MODULE) —
+          # confirmed the hard way in CI. 22.13+ does. Using '22' (latest
+          # 22.x) rather than re-pinning a specific patch so this doesn't
+          # silently rot again.
+          node-version: '22'
           cache: 'npm'
 
       # This is an npm-workspaces monorepo (root package.json declares

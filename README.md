@@ -58,7 +58,8 @@ Sec-WebSocket-Accept handshake).
 
 ## Getting started
 
-Requires **Node 22.5+** (for the built-in `node:sqlite` module).
+Requires **Node 22.13+** (for the built-in `node:sqlite` module without a flag —
+earlier 22.x releases, including 22.12, don't have it).
 
 ```bash
 git clone https://github.com/<your-username>/quantpulse.git
