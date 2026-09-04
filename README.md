@@ -8,13 +8,17 @@ accounting, and backtest a strategy before you trade it.
 
 - **Backend:** Node.js + Express, persisted with `node:sqlite` (Node's built-in SQLite —
   no native module install, no build step)
+- **ML signal (optional):** a separate Python/Flask service (`ml-service/`) trains a
+  gradient-boosted classifier on technical-indicator features and serves it as a fourth
+  backtest strategy — see "Machine learning signal" below
 - **Frontend:** React 19, bundled with esbuild directly (no framework CLI), hand-rolled
   SVG charts (no charting library), custom hash-based routing (no router library)
 - **Real-time:** a hand-rolled WebSocket server (RFC 6455 handshake + framing implemented
   directly over Node's `http`/`net`, no `ws` package) pushing live quote ticks to the
   dashboard
-- **Tests:** Node's built-in test runner — 85+ tests, run against a real in-memory SQLite
-  database and, for the WebSocket layer, a real handshake over a real TCP socket — not mocks
+- **Tests:** Node's built-in test runner — 90+ tests, run against a real in-memory SQLite
+  database and, for the WebSocket layer, a real handshake over a real TCP socket — not
+  mocks; `ml-service/` has its own suite (Python's `unittest`, 15 tests)
 
 ## Why it's built this way
 
@@ -43,9 +47,9 @@ Sec-WebSocket-Accept handshake).
 - **Market impact / slippage** — a square-root impact model (`impact ~ sqrt(order size /
   average volume)`, capped at 8%) means a large order actually moves your fill price, the
   same functional shape used in real transaction-cost-analysis models
-- **Backtesting** — run an SMA-crossover or RSI mean-reversion strategy against a symbol's
-  price history and see the trade log, equity curve, win rate, and a buy-and-hold
-  comparison
+- **Backtesting** — run an SMA-crossover, RSI mean-reversion, or ML-signal strategy against
+  a symbol's price history and see the trade log, equity curve, win rate, and a
+  buy-and-hold comparison
 - **Risk metrics** — Sharpe ratio, max drawdown, and annualized volatility, computed from
   the portfolio's value-over-time history (and from every backtest's equity curve, using
   the same math)
@@ -87,13 +91,15 @@ ALPHA_VANTAGE_KEY=your_key_here npm run dev:server
 npm test
 ```
 
-85+ tests cover the technical indicator math (SMA/EMA/RSI/MACD/Bollinger/VWAP against
+90+ tests cover the technical indicator math (SMA/EMA/RSI/MACD/Bollinger/VWAP against
 hand-computed values), the market data provider, the trading engine (cost-basis averaging,
 atomic rollback), the limit order book (reservation accounting, fill-at-the-better-price),
 the market-impact/slippage model, portfolio risk metrics (Sharpe/drawdown/volatility), the
-backtesting engine, the rate limiter, and the WebSocket frame protocol — including a live
-handshake + bidirectional message round-trip over a real socket using Node's built-in
-`WebSocket` client, not a mock.
+backtesting engine (including the `ml_signal` strategy against an injected fake ML
+client), the ML service's own HTTP client (`server/src/ml.js`, against a mocked `fetch`),
+the rate limiter, and the WebSocket frame protocol — including a live handshake +
+bidirectional message round-trip over a real socket using Node's built-in `WebSocket`
+client, not a mock.
 
 ### Production build
 
@@ -108,15 +114,72 @@ npm start --workspace server   # serves the API, WebSocket, and built client fro
 docker compose up --build
 ```
 
-Builds the client, installs only the server's production dependencies, and runs everything
-in one container on port 4000, with the SQLite database persisted in a named volume so it
-survives container restarts. Set `ALPHA_VANTAGE_KEY` / `QUANTPULSE_STARTING_CASH` in a
-`.env` file or your shell environment before running to override the defaults.
+Builds two images — the main app (client + server, port 4000) and the ML service
+(port 8000) — and runs both, with the SQLite database and (once trained) the ML model
+each persisted in their own named volume so they survive container restarts. Set
+`ALPHA_VANTAGE_KEY` / `QUANTPULSE_STARTING_CASH` in a `.env` file or your shell environment
+before running to override the defaults. Train a model inside the running container with:
+
+```bash
+docker compose exec ml-service python train.py --api-base http://quantpulse:4000
+```
+
+### Machine learning signal
+
+`ml-service/` is a small, separate Python/Flask service that trains a gradient-boosted
+classifier (`scikit-learn`'s `GradientBoostingClassifier`) to predict P(next daily bar
+closes higher than this one) from seven hand-engineered technical features — 1-day
+return, price relative to its 5/20-day SMA, RSI(14), MACD histogram, Bollinger Band
+width, and a rolling volume z-score (`ml-service/features.py`). The Node API talks to it
+over HTTP (`server/src/ml.js`) exactly the way `marketData.js` talks to Alpha Vantage —
+if the service is never started, everything else in QuantPulse works exactly as before;
+only the `ml_signal` backtest strategy needs it, and it fails with a clear message rather
+than crashing the app if the service is unreachable or has no trained model yet.
+
+This is a deliberate architectural split, not an afterthought: a real trading shop
+generally keeps modeling/research in Python and the execution path in something else,
+and that's the shape here too — `ml-service/` has zero effect on the Node app's own
+dependency footprint.
+
+```bash
+pip install -r ml-service/requirements.txt
+
+# 1. With the QuantPulse server running (npm run dev:server), train a model
+#    against its own price history:
+python ml-service/train.py --api-base http://localhost:4000
+
+# 2. Serve it:
+cd ml-service && python app.py   # listens on :8000 by default
+
+# 3. Point the Node API at it (only needed if not using the default):
+ML_SERVICE_URL=http://localhost:8000 npm run dev:server
+```
+
+Then pick "ML signal (gradient-boosted)" as the strategy on the Backtest page.
+
+**On accuracy — read this before treating a backtest number as meaningful.** Without an
+`ALPHA_VANTAGE_KEY` set, QuantPulse's price history is a deterministic *random walk* by
+design (see `marketData.js`) — there's no real autocorrelation in it for any model to
+find, so `train.py`'s holdout accuracy against simulated data should land close to 50%,
+i.e. a coin flip, and that's the correct, honest result for a random walk rather than a
+bug. Separately, running a backtest over the same symbol/date range a model was trained
+on measures in-sample fit, not genuine predictive skill — the standard overfitting trap
+in this kind of project. Getting a real read requires both a real market (set
+`ALPHA_VANTAGE_KEY` and retrain) and a proper out-of-sample split (train on one date
+range, backtest a later one the model never saw). `train.py` does hold out its own
+chronological test split and prints accuracy/ROC AUC for that reason.
+
+Run its tests (standard library `unittest`, no `pytest` dependency) with:
+
+```bash
+cd ml-service && python -m unittest discover -s tests -v
+```
 
 ### CI
 
-`.github/workflows/ci.yml` runs the full server test suite and a production client build
-on every push and pull request to `main`.
+`.github/workflows/ci.yml` runs two independent jobs on every push and pull request to
+`main`: the Node server test suite plus a production client build, and the
+`ml-service` Python test suite.
 
 ## Project structure
 
@@ -145,6 +208,13 @@ quantpulse/
 │       ├── useLiveQuotes.js  # WebSocket hook — overlays live ticks on top of polling
 │       ├── api.js            # fetch wrapper for the backend
 │       └── useHashRoute.js   # minimal client-side router
+├── ml-service/                # optional Python service backing the ml_signal strategy
+│   ├── features.py            # technical-indicator feature engineering (pandas)
+│   ├── train.py                # fetches history from the Node API, trains, saves model.joblib
+│   ├── app.py                   # Flask app: /predict, /health, /reload
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   └── tests/                   # unittest suites for features.py and app.py
 ├── Dockerfile
 ├── docker-compose.yml
 └── .github/workflows/ci.yml

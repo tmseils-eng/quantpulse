@@ -13,7 +13,7 @@ backtestRouter.post('/', async (req, res, next) => {
     const numDays = Math.min(Math.max(Number(days) || 365, 30), 1000);
     const bars = await getHistory(normalizedSymbol, numDays);
 
-    const result = runBacktest(bars, {
+    const result = await runBacktest(bars, {
       strategy,
       startingCash: startingCash != null ? Number(startingCash) : undefined,
       ...params,

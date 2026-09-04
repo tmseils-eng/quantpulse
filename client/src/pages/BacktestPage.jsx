@@ -12,10 +12,11 @@ const DAY_OPTIONS = [
 ];
 
 /**
- * Backtest a simple long/flat strategy (SMA crossover or RSI mean-reversion)
- * against a symbol's simulated price history. This runs against QuantPulse's
- * own market simulator, not real historical prices, so it's a demonstration
- * of the backtesting mechanics rather than a real trading research tool.
+ * Backtest a simple long/flat strategy (SMA crossover, RSI mean-reversion,
+ * or a gradient-boosted ML signal served by ml-service/) against a symbol's
+ * simulated price history. This runs against QuantPulse's own market
+ * simulator, not real historical prices, so it's a demonstration of the
+ * backtesting mechanics rather than a real trading research tool.
  */
 export function BacktestPage() {
   const [symbol, setSymbol] = useState('AAPL');
@@ -26,6 +27,8 @@ export function BacktestPage() {
   const [rsiPeriod, setRsiPeriod] = useState(14);
   const [oversold, setOversold] = useState(30);
   const [overbought, setOverbought] = useState(70);
+  const [mlThreshold, setMlThreshold] = useState(0.55);
+  const [mlExitThreshold, setMlExitThreshold] = useState(0.45);
   const [startingCash, setStartingCash] = useState(100_000);
 
   const [result, setResult] = useState(null);
@@ -40,7 +43,9 @@ export function BacktestPage() {
       const params =
         strategy === 'sma_crossover'
           ? { fastPeriod: Number(fastPeriod), slowPeriod: Number(slowPeriod) }
-          : { rsiPeriod: Number(rsiPeriod), oversold: Number(oversold), overbought: Number(overbought) };
+          : strategy === 'rsi'
+            ? { rsiPeriod: Number(rsiPeriod), oversold: Number(oversold), overbought: Number(overbought) }
+            : { threshold: Number(mlThreshold), exitThreshold: Number(mlExitThreshold) };
       const res = await api.runBacktest({
         symbol,
         days,
@@ -107,10 +112,20 @@ export function BacktestPage() {
               >
                 <option value="sma_crossover">SMA crossover</option>
                 <option value="rsi">RSI mean-reversion</option>
+                <option value="ml_signal">ML signal (gradient-boosted)</option>
               </select>
             </div>
 
-            {strategy === 'sma_crossover' ? (
+            {strategy === 'ml_signal' && (
+              <div className="trade-error" style={{ marginBottom: 12 }}>
+                Requires the ml-service to be running with a trained model (see the README).
+                Also: backtesting over the same symbol/date range the model was trained on shows
+                in-sample results, not a genuine out-of-sample test — don't read a strong number
+                here as proven predictive skill.
+              </div>
+            )}
+
+            {strategy === 'sma_crossover' && (
               <>
                 <div className="field-row">
                   <label htmlFor="bt-fast">Fast SMA period</label>
@@ -135,7 +150,9 @@ export function BacktestPage() {
                   />
                 </div>
               </>
-            ) : (
+            )}
+
+            {strategy === 'rsi' && (
               <>
                 <div className="field-row">
                   <label htmlFor="bt-rsi-period">RSI period</label>
@@ -170,6 +187,37 @@ export function BacktestPage() {
                     max="99"
                     value={overbought}
                     onChange={(e) => setOverbought(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
+
+            {strategy === 'ml_signal' && (
+              <>
+                <div className="field-row">
+                  <label htmlFor="bt-ml-threshold">Buy above P(up)</label>
+                  <input
+                    id="bt-ml-threshold"
+                    className="text-input"
+                    type="number"
+                    min="0.5"
+                    max="1"
+                    step="0.01"
+                    value={mlThreshold}
+                    onChange={(e) => setMlThreshold(e.target.value)}
+                  />
+                </div>
+                <div className="field-row">
+                  <label htmlFor="bt-ml-exit">Sell below P(up)</label>
+                  <input
+                    id="bt-ml-exit"
+                    className="text-input"
+                    type="number"
+                    min="0"
+                    max="0.5"
+                    step="0.01"
+                    value={mlExitThreshold}
+                    onChange={(e) => setMlExitThreshold(e.target.value)}
                   />
                 </div>
               </>

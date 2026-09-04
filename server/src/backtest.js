@@ -1,11 +1,12 @@
 // Strategy backtesting engine. Runs a simple long/flat strategy (SMA
-// crossover or RSI mean-reversion) against a series of historical daily
-// bars and reports a trade log, an equity curve, and the same risk metrics
-// (risk.js) used for the live portfolio — so a backtest's Sharpe/drawdown
-// means exactly the same thing as the portfolio page's.
+// crossover, RSI mean-reversion, or an ML-driven signal) against a series of
+// historical daily bars and reports a trade log, an equity curve, and the
+// same risk metrics (risk.js) used for the live portfolio — so a backtest's
+// Sharpe/drawdown means exactly the same thing as the portfolio page's.
 
 import { sma, rsi } from './indicators.js';
 import { riskSummary } from './risk.js';
+import { getMlSignals, MlServiceError } from './ml.js';
 
 export class BacktestError extends Error {}
 
@@ -47,9 +48,49 @@ function rsiSignals(bars, period, oversold, overbought) {
   return signals;
 }
 
-const STRATEGIES = {
+/**
+ * BUY/SELL/null per bar, driven by the ML service's per-bar P(next bar up).
+ * Goes long once the model's confidence clears `threshold` and exits once it
+ * drops to `exitThreshold` — a wider gap between the two (the default is
+ * 0.55 / 0.45) avoids flipping position on every small wobble around 50/50.
+ */
+async function mlSignals(bars, params, deps) {
+  const { threshold = 0.55, exitThreshold = 0.45 } = params;
+  const fetchSignals = deps.getMlSignals || getMlSignals;
+
+  let predictions;
+  try {
+    predictions = await fetchSignals(bars);
+  } catch (err) {
+    if (err instanceof MlServiceError) throw new BacktestError(err.message);
+    throw err;
+  }
+
+  const signals = new Array(bars.length).fill(null);
+  let inPosition = false;
+
+  for (let i = 0; i < bars.length; i++) {
+    const prob = predictions?.[i]?.probabilityUp;
+    if (prob == null) continue;
+    if (!inPosition && prob >= threshold) {
+      signals[i] = 'BUY';
+      inPosition = true;
+    } else if (inPosition && prob <= exitThreshold) {
+      signals[i] = 'SELL';
+      inPosition = false;
+    }
+  }
+  return signals;
+}
+
+// Each generator returns (or resolves to) a BUY/SELL/null array aligned with
+// `bars`. sma_crossover/rsi are synchronous; ml_signal is async (it calls
+// out to the ML service) — runBacktest awaits all three the same way so the
+// rest of the engine doesn't need to know which kind of strategy it's running.
+const SIGNAL_GENERATORS = {
   sma_crossover: (bars, p) => smaCrossoverSignals(bars, p.fastPeriod ?? 20, p.slowPeriod ?? 50),
   rsi: (bars, p) => rsiSignals(bars, p.rsiPeriod ?? 14, p.oversold ?? 30, p.overbought ?? 70),
+  ml_signal: (bars, p, deps) => mlSignals(bars, p, deps),
 };
 
 /**
@@ -57,21 +98,24 @@ const STRATEGIES = {
  * long or fully flat (no partial sizing, no shorting) — simple by design, so
  * the trade log stays easy to read and reason about. Returns the trade log,
  * equity curve, headline stats, and a buy-and-hold return for comparison.
+ *
+ * `deps` is test/DI-only: pass `{ getMlSignals }` to substitute a fake ML
+ * client instead of calling the real service (see backtest.test.js).
  */
-export function runBacktest(bars, options = {}) {
+export async function runBacktest(bars, options = {}, deps = {}) {
   const { strategy = 'sma_crossover', startingCash = 100_000, ...params } = options;
 
   if (!bars || bars.length < 2) {
     throw new BacktestError('Not enough history to backtest');
   }
-  if (!STRATEGIES[strategy]) {
+  if (!SIGNAL_GENERATORS[strategy]) {
     throw new BacktestError(`Unknown strategy: ${strategy}`);
   }
   if (!Number.isFinite(startingCash) || startingCash <= 0) {
     throw new BacktestError('startingCash must be a positive number');
   }
 
-  const signals = STRATEGIES[strategy](bars, params);
+  const signals = await SIGNAL_GENERATORS[strategy](bars, params, deps);
 
   let cash = startingCash;
   let shares = 0;

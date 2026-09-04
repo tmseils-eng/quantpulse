@@ -10,11 +10,31 @@ services:
       ALPHA_VANTAGE_KEY: ${ALPHA_VANTAGE_KEY:-}
       # Optional: change the paper-trading starting cash (defaults to 100000).
       QUANTPULSE_STARTING_CASH: ${QUANTPULSE_STARTING_CASH:-}
+      # Points the `ml_signal` backtest strategy at the service below. Stop
+      # or remove the ml-service container and everything else still works —
+      # only that one strategy needs this.
+      ML_SERVICE_URL: http://ml-service:8000
     volumes:
       # Named volume so the SQLite portfolio survives `docker compose down`
       # / container recreation — only `down -v` wipes it.
       - quantpulse-data:/data
     restart: unless-stopped
+    depends_on:
+      - ml-service
+
+  ml-service:
+    build:
+      context: .
+      dockerfile: ml-service/Dockerfile
+    ports:
+      - '8000:8000'
+    volumes:
+      # Persists the trained model.joblib across restarts, same idea as the
+      # main app's quantpulse-data volume. Empty until you train a model:
+      #   docker compose exec ml-service python train.py --api-base http://quantpulse:4000
+      - ml-service-data:/data
+    restart: unless-stopped
 
 volumes:
   quantpulse-data:
+  ml-service-data:

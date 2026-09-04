@@ -14,3 +14,12 @@ server/quantpulse.db-wal
 # OS/editor cruft
 .DS_Store
 *.swp
+
+# ml-service: a trained model is a build artifact (run train.py to produce
+# one), not source — same reasoning as node_modules/ above.
+ml-service/model.joblib
+ml-service/__pycache__/
+ml-service/tests/__pycache__/
+ml-service/.venv/
+**/__pycache__/
+*.pyc
